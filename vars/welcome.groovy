@@ -1,5 +1,5 @@
 def build(){
-  mvn package
+  sh 'mvn package'
 }
 
 // def buildImage(){
