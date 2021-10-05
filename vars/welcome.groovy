@@ -1,3 +1,4 @@
+//maven project
 def buildMvn(){
   sh 'mvn package'
 }
@@ -16,3 +17,11 @@ def pushImageMvn(){
   }
 }
 
+//npm version
+def checkoutCodeNpm(){
+  checkout scm
+}
+
+def buildImageNpm(){
+  myapp = docker.build("alingavrila/nodejs-test:${env.BUILD_ID}")
+}
