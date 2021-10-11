@@ -1,0 +1,128 @@
+# here are the parameters will are going to add after uploading the file in Cloudformation
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 Key Pair
+    Type: AWS::EC2::KeyPair::KeyName
+  
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: Choose which VPC that the Application Load Balancer should be deployed to
+  
+  Subnets:
+    Description: Choose all the 3 subnets so that the Application Load Balancer should work properly
+    Type: List<AWS::EC2::Subnet::Id>
+
+# Here are all the resources that will be build
+Resources:
+# Security group
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH access via port 22 and Enable Http via port 80
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+# The Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: 'MyLoadBalancer'
+      Subnets: !Ref Subnets
+      SecurityGroups: [!GetAtt SecurityGroup.GroupId]
+
+# Application Load Balancer Listener
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+# Target Group to target the instances for the load balancer
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Protocol: HTTP
+      Port: 80
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 3
+      TargetType: instance
+      Matcher:
+        HttpCode: '200'
+      Name: MyTargets
+      VpcId: !Ref VPC
+
+# template to create the instances
+  myTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: ami-043097594a7df80ec
+        InstanceType: t2.micro
+        KeyName: !Ref KeyName
+        SecurityGroupIds:
+          - !GetAtt SecurityGroup.GroupId
+        UserData:
+          'Fn::Base64':
+            !Sub |
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1> Hello World from $(hostname -f)</h1>" > /var/www/html/index.html
+
+# auto scaling group to add a new instance every tine there are mess than 3
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: Auto Scaling Group
+      Cooldown: 120
+      DesiredCapacity: '3'
+      LaunchTemplate:
+        LaunchTemplateId: !Ref myTemplate
+        Version: !GetAtt myTemplate.LatestVersionNumber
+      # LaunchConfigurationName: AlinConfiguration
+      # LoadBalancerNames: !Ref ApplicationLoadBalancer
+      MaxSize: '4'
+      MinSize: '3'
+      VPCZoneIdentifier: !Ref Subnets
+      TargetGroupARNs:
+        - !Ref ALBTargetGroup
+
+# the outputs for the cloudformation stack
+Outputs:
+  SecurityGroup:
+    Description: Security Group
+    Value: !Ref SecurityGroup
+
+  LoadBalancer:
+    Description: A reference to the Application Load Balancer
+    Value: !Ref ApplicationLoadBalancer
+
+  LoadBalancerUrl:
+    Description: The URL of the ALB
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+  
+  AutoscalingGroup:
+    Description: "The newly created asg"
+    Value:
+      Ref: "AutoScalingGroup"
