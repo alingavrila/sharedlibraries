@@ -1,8 +1,8 @@
-def upload(Map stageParams = [awsRegion: "us-east-1", s3Bucket: "mybucketname123321123"]) {
+def upload(Map stageParams = [awsRegion: "us-east-1"]) {
     withAWS(region: stageParams.awsRegion, credentials:"${AWS_CRED}") {
         awsIdentity()
         s3Upload( 
-            includePathPattern: "ec2.yaml",
+            includePathPattern: stageParams.stackFileName,
             bucket: stageParams.s3Bucket
         )
     }
